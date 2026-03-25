@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: shutdown-simulator
+  name: echoserver
   labels:
-    app: shutdown-simulator
+    app: echoserver
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: shutdown-simulator
+      app: echoserver
   template:
     metadata:
       labels:
-        app: shutdown-simulator
+        app: echoserver
       annotations:
         # Sidecar lifecycle management
         proxy.istio.io/config: |
@@ -21,8 +21,8 @@ spec:
         proxy.istio.io/holdApplicationUntilProxyReceivesConfig: "true"
     spec:
       containers:
-      - name: simulator
-        image: ghcr.io/ardikabs/shutdown-simulator:latest
+      - name: echoserver
+        image: ghcr.io/ardikabs/echoserver:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
@@ -37,6 +37,8 @@ spec:
           value: "random"
         - name: MAX_ERROR_DELAY
           value: "2s"
+        - name: ENABLE_BACKGROUND_WORKER
+          value: "false"
         livenessProbe:
           httpGet:
             path: /healthz

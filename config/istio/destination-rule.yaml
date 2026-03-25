@@ -1,9 +1,9 @@
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
-  name: shutdown-simulator
+  name: echoserver
 spec:
-  host: shutdown-simulator
+  host: echoserver
   trafficPolicy:
     loadBalancer:
       simple: LEAST_CONN

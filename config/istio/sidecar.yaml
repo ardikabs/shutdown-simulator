@@ -1,11 +1,11 @@
 apiVersion: networking.istio.io/v1beta1
 kind: Sidecar
 metadata:
-  name: shutdown-simulator
+  name: echoserver
 spec:
   workloadSelector:
     labels:
-      app: shutdown-simulator
+      app: echoserver
   egress:
   - hosts:
     - "istio-system/*"

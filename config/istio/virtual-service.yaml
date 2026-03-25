@@ -1,19 +1,19 @@
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  name: shutdown-simulator
+  name: echoserver
 spec:
   hosts:
-  - shutdown-simulator.example.com
-  - shutdown-simulator.default.svc.cluster.local
+  - echoserver.example.com
+  - echoserver.default.svc.cluster.local
   gateways:
-  - shutdown-simulator-gateway
+  - echoserver-gateway
   - mesh
   http:
-  - name: "simulator-route"
+  - name: "echoserver-route"
     route:
     - destination:
-        host: shutdown-simulator
+        host: echoserver
         port:
           number: 80
       weight: 100

@@ -32,6 +32,7 @@ func main() {
 	errorRate := getEnvFloat("ERROR_RATE", 0.0)
 	failureMode := getEnvString("FAILURE_MODE", "500") // 500, 503, 504, hang, reset, close, partial, slow-body, random, 5xx
 	maxErrorDelay := getEnvInt("MAX_ERROR_DELAY_SECONDS", 5)
+	enableBackgroundWorker := getEnvBool("ENABLE_BACKGROUND_WORKER", false)
 
 	slog.Info("Service configuration",
 		"shutdown_delay", shutdownDelay,
@@ -39,6 +40,7 @@ func main() {
 		"error_rate", errorRate,
 		"failure_mode", failureMode,
 		"max_error_delay", maxErrorDelay,
+		"enable_background_worker", enableBackgroundWorker,
 	)
 
 	// Create a context that is cancelled on SIGINT or SIGTERM
@@ -48,12 +50,14 @@ func main() {
 	var wg sync.WaitGroup
 	var activeRequests int64
 
-	// 1. Start the Background Worker
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		runWorker(ctx)
-	}()
+	// 1. Start the Background Worker if enabled
+	if enableBackgroundWorker {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runWorker(ctx)
+		}()
+	}
 
 	// 2. Start the HTTP Server
 	server := &http.Server{
@@ -102,7 +106,30 @@ func setupRoutes(activeRequests *int64, errorRate float64, failureMode string, m
 		fmt.Fprintln(w, "OK")
 	})
 
-	mux.HandleFunc("/work", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/status/", func(w http.ResponseWriter, r *http.Request) {
+		statusStr := strings.TrimPrefix(r.URL.Path, "/status/")
+		if statusStr == "" {
+			http.Error(w, "Status code required", http.StatusBadRequest)
+			return
+		}
+
+		status, err := strconv.Atoi(statusStr)
+		if err != nil {
+			http.Error(w, "Invalid status code", http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(status)
+		fmt.Fprintf(w, "Status: %d\n", status)
+	})
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Only handle exact root path
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+
 		atomic.AddInt64(activeRequests, 1)
 		defer atomic.AddInt64(activeRequests, -1)
 
@@ -111,17 +138,17 @@ func setupRoutes(activeRequests *int64, errorRate float64, failureMode string, m
 			id = uuid.New().String()
 		}
 
-		durationStr := r.URL.Query().Get("duration")
-		duration := 0
-		if durationStr != "" {
-			if d, err := strconv.Atoi(durationStr); err == nil && d > 0 {
-				duration = d
+		delayStr := r.URL.Query().Get("delay")
+		delay := 0
+		if delayStr != "" {
+			if d, err := strconv.Atoi(delayStr); err == nil && d > 0 {
+				delay = d
 			}
-		} else if durationStr == "random" {
-			duration = rand.Intn(10) + 1 // Random duration between 1 and 10 seconds
+		} else if delayStr == "random" {
+			delay = rand.Intn(10) + 1 // Random delay between 1 and 10 seconds
 		}
 
-		slog.Info("Starting work request", "id", id, "duration_sec", duration, "total_active", atomic.LoadInt64(activeRequests))
+		slog.Info("Starting request", "id", id, "method", r.Method, "path", r.URL.Path, "delay_sec", delay, "total_active", atomic.LoadInt64(activeRequests))
 
 		// Simulate random failure
 		if errorRate > 0 && rand.Float64() < errorRate {
@@ -237,19 +264,21 @@ func setupRoutes(activeRequests *int64, errorRate float64, failureMode string, m
 
 		// Normal operation with delay
 		select {
-		case <-time.After(time.Duration(duration) * time.Second):
-			slog.Info("Work request completed", "id", id, "total_active", atomic.LoadInt64(activeRequests))
+		case <-time.After(time.Duration(delay) * time.Second):
+			slog.Info("Request completed", "id", id, "total_active", atomic.LoadInt64(activeRequests))
 
 			response := struct {
 				ID      string      `json:"id"`
+				Method  string      `json:"method"`
 				Status  string      `json:"status"`
 				Headers http.Header `json:"headers"`
 				Message string      `json:"message"`
 			}{
 				ID:      id,
+				Method:  r.Method,
 				Status:  "success",
 				Headers: r.Header,
-				Message: fmt.Sprintf("Work completed after %ds", duration),
+				Message: fmt.Sprintf("Echo response after %ds", delay),
 			}
 
 			w.Header().Set("Content-Type", "application/json")
@@ -274,7 +303,7 @@ func runWorker(ctx context.Context) {
 			slog.Info("Worker is processing periodic task...")
 		case <-ctx.Done():
 			slog.Info("Worker received shutdown signal, performing cleanup...")
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(250 * time.Millisecond)
 			slog.Info("Worker cleanup finished")
 			return
 		}
@@ -314,6 +343,16 @@ func getEnvFloat(key string, defaultValue float64) float64 {
 func getEnvString(key string, defaultValue string) string {
 	if val, ok := os.LookupEnv(key); ok {
 		return val
+	}
+	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	if val, ok := os.LookupEnv(key); ok {
+		b, err := strconv.ParseBool(val)
+		if err == nil {
+			return b
+		}
 	}
 	return defaultValue
 }

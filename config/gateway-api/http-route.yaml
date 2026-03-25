@@ -1,20 +1,23 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: shutdown-simulator
+  name: echoserver
 spec:
   parentRefs:
-  - name: shutdown-simulator
+  - name: echoserver
   hostnames:
-  - shutdown-simulator.example.com
+  - echoserver.example.com
   rules:
   - matches:
     - path:
         type: PathPrefix
-        value: /work
+        value: /
     - path:
         type: PathPrefix
         value: /healthz
+    - path:
+        type: PathPrefix
+        value: /status
     backendRefs:
-    - name: shutdown-simulator
+    - name: echoserver
       port: 80

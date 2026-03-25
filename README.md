@@ -1,29 +1,31 @@
-# Graceful Shutdown Simulator
+# Echoserver with battery-included features
 
-This service provides an HTTP server and a background worker to simulate long-running processes. It is designed to validate graceful shutdown behavior in Kubernetes, particularly when using Istio native sidecars and Gateway API.
+This service provides a highly configurable EchoServer and a background worker simulator. It is designed to validate graceful shutdown behavior, simulate infrastructure failures, and test Kubernetes networking components like Istio and Gateway API.
 
 ## Features
 
 - **HTTP Endpoints:**
-  - `GET /healthz`: Health check endpoint for Liveness and Readiness probes.
-  - `GET /work?duration=5`: Simulates an HTTP request that takes 5 seconds. If `duration` is missing or invalid, it completes immediately (0s delay).
+  - `ANY /`: The main Echo endpoint. It supports all HTTP verbs and returns a JSON response containing request headers, method, and an optional message.
     - **Request ID:** Automatically generates a UUID for each request if `X-Request-ID` header is missing.
-    - **Echo Headers:** Returns all request headers in the JSON response.
     - **Failure Simulation:** Can simulate complex infrastructure/network failures based on a configurable rate and mode.
-- **Background Worker:** Simulates a long-running background process (e.g., a queue consumer) that performs periodic tasks and requires cleanup upon shutdown.
+    - **Delay Simulation:** Use `?delay=X` (seconds) to simulate a long-running request.
+  - `GET /status/{code}`: Returns the specified HTTP status code on demand (e.g., `/status/418`).
+  - `GET /healthz`: Health check endpoint for Liveness and Readiness probes.
+- **Background Worker:** Optional background process (e.g., a queue consumer) that performs periodic tasks. Toggleable via `ENABLE_BACKGROUND_WORKER`.
 - **Graceful Shutdown:** Handles `SIGTERM` and `SIGINT` signals with a structured sequence:
   1. **Shutdown Delay:** Waits for `SHUTDOWN_DELAY` before starting the actual shutdown (useful for Istio sidecar drain coordination).
   2. **Server Shutdown:** Stops accepting new connections and waits for active requests to complete.
-  3. **Worker Cleanup:** Triggers the background worker to stop and perform its final cleanup tasks.
+  3. **Worker Cleanup:** Triggers the background worker (if enabled) to stop and perform its final cleanup tasks.
   4. **Final Exit:** Terminates once all components are finished or the `DRAIN_TIMEOUT` is reached.
 
 ## Configuration
 
 | Environment Variable | Default | Description |
 |----------------------|---------|-------------|
+| `ENABLE_BACKGROUND_WORKER` | `false` | Whether to enable the periodic background worker. |
 | `SHUTDOWN_DELAY`     | `0s`    | Delay after receiving SIGTERM before starting the shutdown sequence. |
 | `DRAIN_TIMEOUT`      | `30s`   | Maximum time to wait for active requests and worker cleanup during shutdown. |
-| `ERROR_RATE`         | `0.0`   | Probability (0.0 to 1.0) of triggering a failure for `/work` requests. |
+| `ERROR_RATE`         | `0.0`   | Probability (0.0 to 1.0) of triggering a failure for root `/` requests. |
 | `FAILURE_MODE`       | `500`   | Type of failure to simulate. (Options: `500`, `503`, `504`, `5xx`, `hang`, `reset`, `close`, `partial`, `slow-body`, `random`, or a comma-separated list). |
 | `MAX_ERROR_DELAY_SECONDS` | `5` | Maximum random delay (in seconds) applied before returning `503` or `504` errors. |
 
@@ -48,7 +50,7 @@ This service provides an HTTP server and a background worker to simulate long-ru
 The project includes a multi-stage `Dockerfile` based on **Wolfi** for a secure, minimal runtime environment.
 
 ```bash
-docker build -t ghcr.io/ardikabs/shutdown-simulator:latest .
+docker build -t ghcr.io/ardikabs/echoserver:latest .
 ```
 
 ### Kubernetes & Istio
@@ -69,24 +71,24 @@ The `Deployment` is pre-configured with Istio annotations to optimize sidecar li
 
 ```bash
 # Build the service
-go build -o service main.go
+go build -o echoserver main.go
 
-# Run with a 10% random failure rate and a 2-second shutdown delay
-SHUTDOWN_DELAY=2s ERROR_RATE=0.1 FAILURE_MODE=random ./service
+# Run as a simple echoserver
+./echoserver
 
-# Run with custom failure list (will randomly pick between 503, 504, or reset)
-ERROR_RATE=0.2 FAILURE_MODE="503,504,reset" ./service
+# Run with a 10% random failure rate and background worker enabled
+ENABLE_BACKGROUND_WORKER=true ERROR_RATE=0.1 FAILURE_MODE=random ./echoserver
 ```
 
 ### Testing Scenarios
 
-1. **Verify In-flight Request Handling:**
-   - Start a 15s request: `curl -v "http://localhost:8080/work?duration=15"`
+1. **Verify Echo functionality:**
+   - `curl -X POST -d "hello" "http://localhost:8080/"`
+
+2. **Verify On-demand Status Codes:**
+   - `curl -i "http://localhost:8080/status/418"`
+
+3. **Verify In-flight Request Handling during Shutdown:**
+   - Start a 15s request: `curl -v "http://localhost:8080/?delay=15"`
    - Trigger shutdown: `kill -TERM <pid>`
    - Observe logs: The server should wait for the request to complete before exiting.
-
-2. **Verify Istio Draining:**
-   - Deploy to K8s with Istio.
-   - Run a load test or a long request.
-   - Delete the pod: `kubectl delete pod <pod-name>`
-   - Observe `istio-proxy` logs to ensure it drains listeners and waits for the simulator to finish.
