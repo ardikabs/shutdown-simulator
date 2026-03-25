@@ -61,7 +61,7 @@ func main() {
 
 	// 2. Start the HTTP Server
 	server := &http.Server{
-		Addr:    ":8080",
+		Addr:    fmt.Sprintf(":%s", getEnvString("SERVER_PORT", "8080")),
 		Handler: setupRoutes(&activeRequests, errorRate, failureMode, maxErrorDelay),
 	}
 
