@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shutdown-simulator
+  labels:
+    app: shutdown-simulator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: shutdown-simulator
+  template:
+    metadata:
+      labels:
+        app: shutdown-simulator
+      annotations:
+        # Sidecar lifecycle management
+        proxy.istio.io/config: |
+          terminationDrainDuration: 30s
+        # Ensure sidecar is ready before app starts
+        proxy.istio.io/holdApplicationUntilProxyReceivesConfig: "true"
+    spec:
+      containers:
+      - name: simulator
+        image: ghcr.io/ardikabs/shutdown-simulator:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SHUTDOWN_DELAY
+          value: "5s"
+        - name: DRAIN_TIMEOUT
+          value: "30s"
+        - name: ERROR_RATE
+          value: "0.1"
+        - name: FAILURE_MODE
+          value: "random"
+        - name: MAX_ERROR_DELAY
+          value: "2s"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 2
+          periodSeconds: 5
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+      terminationGracePeriodSeconds: 60

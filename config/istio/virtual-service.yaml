@@ -1,0 +1,24 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: shutdown-simulator
+spec:
+  hosts:
+  - shutdown-simulator.example.com
+  - shutdown-simulator.default.svc.cluster.local
+  gateways:
+  - shutdown-simulator-gateway
+  - mesh
+  http:
+  - name: "simulator-route"
+    route:
+    - destination:
+        host: shutdown-simulator
+        port:
+          number: 80
+      weight: 100
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: gateway-error,connect-failure,refused-stream,503
+    timeout: 0s
