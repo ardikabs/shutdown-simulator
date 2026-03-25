@@ -11,12 +11,14 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 )
 
 func main() {
@@ -126,11 +128,18 @@ func setupRoutes(activeRequests *int64, errorRate float64, failureMode string, m
 			mode := failureMode
 			if mode == "random" {
 				modes := []string{"500", "503", "504", "hang", "reset", "close", "partial", "slow-body"}
-				mode = modes[rand.Intn(len(modes))]
+				mode = lo.Sample(modes)
 			} else if mode == "5xx" {
 				// Randomly choose between 500, 503, and 504
 				modes := []string{"500", "503", "504"}
-				mode = modes[rand.Intn(len(modes))]
+				mode = lo.Sample(modes)
+			} else if strings.Contains(mode, ",") {
+				// Fallback: If it's a comma-separated list like "500,hang,close"
+				modes := strings.Split(mode, ",")
+				modes = lo.Map(modes, func(item string, _ int) string {
+					return strings.TrimSpace(item)
+				})
+				mode = lo.Sample(modes)
 			}
 
 			slog.Warn("Simulating failure", "id", id, "mode", mode)

@@ -24,7 +24,7 @@ This service provides an HTTP server and a background worker to simulate long-ru
 | `SHUTDOWN_DELAY`     | `0s`    | Delay after receiving SIGTERM before starting the shutdown sequence. |
 | `DRAIN_TIMEOUT`      | `30s`   | Maximum time to wait for active requests and worker cleanup during shutdown. |
 | `ERROR_RATE`         | `0.0`   | Probability (0.0 to 1.0) of triggering a failure for `/work` requests. |
-| `FAILURE_MODE`       | `500`   | Type of failure to simulate. (Options: `500`, `503`, `504`, `5xx`, `hang`, `reset`, `close`, `partial`, `slow-body`, `random`). |
+| `FAILURE_MODE`       | `500`   | Type of failure to simulate. (Options: `500`, `503`, `504`, `5xx`, `hang`, `reset`, `close`, `partial`, `slow-body`, `random`, or a comma-separated list). |
 | `MAX_ERROR_DELAY_SECONDS` | `5` | Maximum random delay (in seconds) applied before returning `503` or `504` errors. |
 
 ### Failure Modes Detail
@@ -39,6 +39,7 @@ This service provides an HTTP server and a background worker to simulate long-ru
 - `partial`: Sends headers and a partial chunked response body, then abruptly closes (simulates a mid-stream failure).
 - `slow-body`: Sends the response body very slowly using chunked encoding with 1s delays between chunks.
 - `random`: Randomly selects one of all above failure modes for each error.
+- `Comma-separated list`: If the value contains a comma (e.g., `500,hang,close`), the server will randomly pick one from the list for each failure.
 
 ## Deployment
 
@@ -72,6 +73,9 @@ go build -o service main.go
 
 # Run with a 10% random failure rate and a 2-second shutdown delay
 SHUTDOWN_DELAY=2s ERROR_RATE=0.1 FAILURE_MODE=random ./service
+
+# Run with custom failure list (will randomly pick between 503, 504, or reset)
+ERROR_RATE=0.2 FAILURE_MODE="503,504,reset" ./service
 ```
 
 ### Testing Scenarios
